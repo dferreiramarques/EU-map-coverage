@@ -13,7 +13,7 @@ const tpl = fs.readFileSync(u('../src/template.html'), 'utf8')
 const cut = tpl.indexOf('<div class="wrap">');
 const head = tpl.slice(0, cut).trim(), body = tpl.slice(cut).trim();
 
-const ITER = 250000;
+const ITER = 600000;
 const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12);
 const key = crypto.pbkdf2Sync(password, salt, ITER, 32, 'sha256');
 const c = crypto.createCipheriv('aes-256-gcm', key, iv);
