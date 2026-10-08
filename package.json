@@ -1,0 +1,14 @@
+{
+  "name": "station-coverage-map",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Europe map of station coverage per country, with an in-browser editor.",
+  "scripts": {
+    "build": "node scripts/build-page.mjs",
+    "shapes": "node scripts/build-shapes.mjs"
+  },
+  "devDependencies": {
+    "d3-geo": "3.1.1"
+  }
+}

@@ -1,0 +1,346 @@
+<title>Station Coverage Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: app bar with two tabs; Map = map + side panel (total, legend, ranked list); Edit = form */
+:root{
+  --bg:#f5f4f7; --surface:#ffffff; --fg:#1d1a24; --muted:#6b6676; --line:#e2dfe8;
+  --land:#dcd9e2; --land-stroke:#ffffff; --sea:#eceaf1; --accent:#5b2a91;
+  --font-display:"Archivo",system-ui,sans-serif; --font-body:"Archivo",system-ui,sans-serif;
+  --font-data:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#15131a; --surface:#1f1c26; --fg:#ece9f2; --muted:#9a94a8; --line:#332f3d;
+  --land:#3a3644; --land-stroke:#15131a; --sea:#1a1820; --accent:#c9a6f5; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#15131a; --surface:#1f1c26; --fg:#ece9f2; --muted:#9a94a8; --line:#332f3d;
+  --land:#3a3644; --land-stroke:#15131a; --sea:#1a1820; --accent:#c9a6f5; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.45}
+.wrap{max-width:1240px;margin:0 auto;padding-inline:16px;padding-block:16px 40px}
+header.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-block:6px 14px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.brand{font-family:var(--font-data);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+nav.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px}
+nav.tabs a{font-weight:600;font-size:14px;color:var(--muted);text-decoration:none;padding:6px 16px;border-radius:999px}
+nav.tabs a[aria-current="page"]{background:var(--fg);color:var(--bg)}
+nav.tabs a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1{font-family:var(--font-display);font-weight:800;font-size:clamp(24px,3.4vw,38px);line-height:1.08;letter-spacing:-.02em;margin:0 0 4px;text-wrap:balance}
+.sub{color:var(--muted);margin:0 0 18px;max-width:65ch}
+/* map page */
+.mapgrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+@media (max-width:860px){.mapgrid{grid-template-columns:minmax(0,1fr)}}
+.mapbox{background:var(--sea);border-radius:14px;overflow:hidden;position:relative}
+.mapbox svg{display:block;width:100%;height:auto}
+.mapbox path{stroke:var(--land-stroke);stroke-width:.7;stroke-linejoin:round;fill:var(--land);transition:opacity .15s}
+.mapbox path.has{cursor:pointer}
+.mapbox path.has:hover,.mapbox path.has.hl{stroke:var(--fg);stroke-width:1.6}
+.mapbox text{font-family:var(--font-data);font-size:13px;font-weight:500;pointer-events:none;paint-order:stroke;stroke-width:3px;stroke-linejoin:round}
+.tip{position:absolute;pointer-events:none;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.15);white-space:nowrap}
+.tip b{font-family:var(--font-data);font-weight:500;margin-left:6px}
+.side{display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.lbl{font-family:var(--font-data);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+.total{font-family:var(--font-display);font-weight:800;font-size:44px;line-height:1;font-variant-numeric:tabular-nums}
+.ramp{height:14px;border-radius:7px}
+.ticks{display:flex;justify-content:space-between;font-family:var(--font-data);font-size:11px;color:var(--muted);margin-top:4px}
+.endlabels{display:flex;justify-content:space-between;gap:10px;font-size:13px;font-weight:600;margin-top:6px}
+.endlabels span:last-child{text-align:right}
+.nodata{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-top:10px}
+.nodata i{width:14px;height:10px;border-radius:2px;background:var(--land);display:inline-block}
+ol.rank{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px}
+@media (max-width:420px){ol.rank{grid-template-columns:minmax(0,1fr)}}
+ol.rank li{display:grid;grid-template-columns:12px minmax(0,1fr) auto;align-items:center;gap:8px;padding:4px 2px;border-bottom:1px solid var(--line);font-size:13.5px;cursor:default;min-width:0}
+ol.rank li>span:nth-child(2){min-width:0;overflow-wrap:anywhere}
+[hidden]{display:none!important}
+.mapbox text.call{font-weight:500}
+.mapbox rect.pill{fill:var(--surface);stroke:var(--line)}
+.mapbox text.pilltxt{fill:var(--fg);stroke:none}
+.mapbox line.lead{stroke:var(--fg);stroke-width:1;opacity:.7}
+.sidetop{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:16px}
+@media (max-width:420px){.sidetop{grid-template-columns:minmax(0,1fr)}}
+/* desktop full screen: everything fits in one viewport, no scrolling */
+@media (min-width:1100px) and (min-height:680px){
+  html,body{height:100%}
+  .wrap{height:100%;display:flex;flex-direction:column;max-width:none;padding-block:12px 16px}
+  header.bar{margin-bottom:12px;padding-block:2px 10px}
+  #page-map{flex:1;min-height:0;display:flex;flex-direction:column}
+  #page-map .sub{margin-bottom:12px}
+  .mapgrid{flex:1;min-height:0;grid-template-columns:minmax(0,1fr) minmax(440px,34%);align-items:stretch}
+  .mapbox{height:100%;min-height:0}
+  .mapbox svg{width:100%;height:100%}
+  .side{min-height:0}
+  #page-edit{overflow:auto;flex:1;min-height:0}
+}
+@media (min-width:1100px) and (max-height:900px){
+  h1{font-size:28px} .sub{font-size:13px}
+  .total{font-size:34px} .panel{padding:10px 14px}
+  ol.rank li{padding:2px 2px;font-size:12.5px}
+  .sidetop{gap:12px} .side{gap:12px}
+}
+ol.rank li.hl{background:var(--bg)}
+ol.rank .sw{width:12px;height:12px;border-radius:3px}
+ol.rank .v{font-family:var(--font-data);font-variant-numeric:tabular-nums;font-size:13px}
+ol.rank .sw{background:var(--c)}
+ol.rank .sw.offmap{background:transparent;border:2px dashed var(--c)}
+.offnote{font-size:11.5px;color:var(--muted);margin:8px 0 0;display:flex;align-items:center;gap:8px}
+.offnote i{width:12px;height:12px;border-radius:3px;border:2px dashed var(--muted);display:inline-block}
+/* edit page */
+.editgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:20px;align-items:start}
+@media (max-width:860px){.editgrid{grid-template-columns:minmax(0,1fr)}}
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.field label{font-size:13px;font-weight:600}
+input[type=text],input[type=number],select,textarea{font:inherit;font-size:14px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%;min-width:0}
+input[type=number]{font-family:var(--font-data)}
+textarea{font-family:var(--font-data);font-size:12px;min-height:110px;resize:vertical}
+.row2{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center}
+input[type=color]{width:42px;height:36px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.preview{margin-top:6px}
+.tablewrap{overflow-x:auto}
+table.rows{width:100%;border-collapse:collapse;min-width:520px}
+table.rows th{font-family:var(--font-data);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:500;padding:0 6px 6px}
+table.rows td{padding:4px 6px;border-top:1px solid var(--line);vertical-align:middle}
+table.rows td.sw{width:22px}
+table.rows td.sw i{display:block;width:14px;height:14px;border-radius:3px}
+table.rows td.num{width:110px}
+table.rows td.x{width:36px;text-align:right}
+button{font:inherit;font-size:14px;font-weight:600;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+button.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+button.icon{padding:4px 9px;color:var(--muted)}
+button.danger{color:#b3261e}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.note{font-size:12px;color:var(--muted);margin:6px 0 0}
+.saved{font-size:12px;color:var(--muted);font-family:var(--font-data)}
+h2{font-family:var(--font-display);font-size:17px;font-weight:700;margin:0 0 12px}
+</style>
+
+<div class="wrap">
+  <header class="bar">
+    <span class="brand">Stations · Europe</span>
+    <nav class="tabs" aria-label="Pages">
+      <a href="#map" id="tab-map">Map</a>
+      <a href="#edit" id="tab-edit">Edit</a>
+    </nav>
+  </header>
+
+  <section id="page-map">
+    <h1 id="m-title"></h1>
+    <p class="sub" id="m-sub"></p>
+    <div class="mapgrid">
+      <div class="mapbox" id="mapbox">
+        <svg id="map" viewBox="0 0 1000 860" role="img" aria-label="Map of Europe coloured by percentage"></svg>
+        <div class="tip" id="tip" hidden></div>
+      </div>
+      <aside class="side">
+        <div class="sidetop">
+        <div class="panel" id="totalPanel">
+          <p class="lbl" id="m-totlabel"></p>
+          <div class="total" id="m-total"></div>
+        </div>
+        <div class="panel">
+          <p class="lbl">Scale</p>
+          <div class="ramp" id="m-ramp"></div>
+          <div class="ticks"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+          <div class="endlabels"><span id="m-low"></span><span id="m-high"></span></div>
+          <div class="nodata"><i></i>No data</div>
+        </div>
+        </div>
+        <div class="panel">
+          <p class="lbl">By country</p>
+          <ol class="rank" id="m-rank"></ol>
+          <p class="offnote" id="m-offnote" hidden><i></i>Dashed swatch: listed but not drawn on the map</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="page-edit" hidden>
+    <h1>Edit map</h1>
+    <p class="sub">Changes apply to the Map page straight away and are kept in this browser. <span class="saved" id="savedMsg"></span></p>
+    <div class="editgrid">
+      <div class="panel">
+        <h2>Text and colours</h2>
+        <div class="field"><label for="f-title">Title</label><input type="text" id="f-title"></div>
+        <div class="field"><label for="f-sub">Subtitle</label><input type="text" id="f-sub"></div>
+        <div class="field"><label for="f-totlabel">Total label</label><input type="text" id="f-totlabel"></div>
+        <div class="field"><label for="f-total">Total value (%)</label><input type="number" id="f-total" step="0.01" min="0" max="100"></div>
+        <div class="field"><label for="f-low">0% colour and label</label>
+          <div class="row2"><input type="color" id="c-low" aria-label="0% colour"><input type="text" id="f-low"></div></div>
+        <div class="field"><label for="f-high">100% colour and label</label>
+          <div class="row2"><input type="color" id="c-high" aria-label="100% colour"><input type="text" id="f-high"></div></div>
+        <div class="ramp preview" id="e-ramp"></div>
+        <div class="ticks"><span>0%</span><span>50%</span><span>100%</span></div>
+
+        <h2 style="margin-top:22px">Paste CSV</h2>
+        <div class="field"><label for="f-csv">Country,Value rows. A last row named "Grand Total" sets the total.</label>
+          <textarea id="f-csv" spellcheck="false"></textarea></div>
+        <div class="btns">
+          <button id="b-import">Replace rows from CSV</button>
+          <button id="b-copy">Copy current data as CSV</button>
+        </div>
+        <p class="note" id="csvMsg"></p>
+        <div class="btns"><button class="danger" id="b-reset">Restore original data</button><button id="b-reset2" hidden class="danger">Confirm restore</button></div>
+      </div>
+      <div class="panel">
+        <h2>Percentages</h2>
+        <div class="tablewrap">
+          <table class="rows">
+            <thead><tr><th></th><th>Label</th><th>%</th><th>Map area</th><th></th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <div class="btns"><button id="b-add">Add row</button></div>
+        <p class="note">"Map area" picks the shape a row colours. Rows set to "Not on map" still show in the country list.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const SHAPES = __SHAPES__;
+const DEFAULTS = {
+  title:"Station coverage by country",
+  sub:"Share of stations per country. Source: BookSheet1.csv",
+  totLabel:"Grand Total", total:85.82,
+  low:"#F07A12", high:"#5B1E96", lowLabel:"0%", highLabel:"100%",
+  rows:[["Spain",79.17,"ESP"],["Romania",100,"ROU"],["Austria",100,"AUT"],["Belgium",100,"BEL"],["Bulgaria",57.14,"BGR"],["Czech Republic",100,"CZE"],["Denmark",100,"DNK"],["Estonia",100,"EST"],["Finland",100,"FIN"],["Germany",100,"DEU"],["Greece",33.33,"GRC"],["Hungary",100,"HUN"],["Ireland",66.67,"IRL"],["Israel",0,"ISR"],["Latvia",100,"LVA"],["Lithuania",100,"LTU"],["Luxembourg",100,"LUX"],["Netherlands",100,"NLD"],["Norway",0,"NOR"],["Portugal",33.33,"PRT"],["Slovakia",100,"SVK"],["Slovenia",100,"SVN"],["Sweden",0,"SWE"],["Switzerland",100,"CHE"],["UK Domestic",96.83,""],["France",0,"FRA"],["Italy",0,"ITA"],["Poland",0,"POL"],["United Kingdom",100,"GBR"]]
+    .map(([label,value,area])=>({label,value,area}))
+};
+const KEY="station-map-v2";
+const clone=o=>JSON.parse(JSON.stringify(o));
+let S; try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!S||!Array.isArray(S.rows)) S=clone(DEFAULTS);
+
+const ALIAS={"uk":"GBR","united kingdom":"GBR","great britain":"GBR","britain":"GBR","england":"GBR","czech republic":"CZE","czechia":"CZE","holland":"NLD","the netherlands":"NLD","bosnia":"BIH","macedonia":"MKD","turkiye":"TUR","türkiye":"TUR"};
+const byName={}; SHAPES.forEach(s=>byName[s.n.toLowerCase()]=s.k);
+const guessArea=l=>{const k=l.trim().toLowerCase();return ALIAS[k]||byName[k]||""};
+const shapeName=k=>(SHAPES.find(s=>s.k===k)||{}).n||k;
+
+/* OKLab interpolation between the two end colours */
+const hex2rgb=h=>{h=h.replace('#','');return[0,2,4].map(i=>parseInt(h.substr(i,2),16)/255)};
+const lin=c=>c<=.04045?c/12.92:Math.pow((c+.055)/1.055,2.4), unlin=c=>c<=.0031308?12.92*c:1.055*Math.pow(c,1/2.4)-.055;
+function toLab(h){const[r,g,b]=hex2rgb(h).map(lin);
+  const l=Math.cbrt(.4122214708*r+.5363325363*g+.0514459929*b),m=Math.cbrt(.2119034982*r+.6806995451*g+.1073969566*b),s=Math.cbrt(.0883024619*r+.2817188376*g+.6299787005*b);
+  return[.2104542553*l+.793617785*m-.0040720468*s,1.9779984951*l-2.428592205*m+.4505937099*s,.0259040371*l+.7827717662*m-.808675766*s]}
+function fromLab([L,a,b]){const l=(L+.3963377774*a+.2158037573*b)**3,m=(L-.1055613458*a-.0638541728*b)**3,s=(L-.0894841775*a-1.291485548*b)**3;
+  const rgb=[4.0767416621*l-3.3077115913*m+.2309699292*s,-1.2684380046*l+2.6097574011*m-.3413193965*s,-.0041960863*l-.7034186147*m+1.707614701*s];
+  return'#'+rgb.map(c=>Math.round(Math.min(1,Math.max(0,unlin(c)))*255).toString(16).padStart(2,'0')).join('')}
+function colorAt(p){const a=toLab(S.low),b=toLab(S.high),t=Math.max(0,Math.min(1,p/100));return fromLab(a.map((v,i)=>v+(b[i]-v)*t))}
+function textOn(p){return toLab(colorAt(p))[0]>.72?"#1d1a24":"#ffffff"}
+function rampCSS(){return`linear-gradient(90deg,${[0,25,50,75,100].map(p=>colorAt(p)+' '+p+'%').join(',')})`}
+const CALLOUT={LUX:[-72,8],ISR:[-50,10]};
+const CODE={LUX:'LU',ISR:'IL',MLT:'MT',AND:'AD',MCO:'MC',LIE:'LI',SMR:'SM',VAT:'VA',CYP:'CY'};
+const short=v=>(Math.round(v*100)/100)+'%';
+const fmt=v=>(Math.round(v*100)/100).toFixed(2)+'%';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+let saveT; const savedMsg=document.getElementById('savedMsg');
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));savedMsg.textContent="Saved"}catch(e){savedMsg.textContent="Not saved: this browser blocks storage"}clearTimeout(saveT);saveT=setTimeout(()=>savedMsg.textContent="",1500)}
+
+/* ---------- MAP ---------- */
+const svg=document.getElementById('map'), tip=document.getElementById('tip'), box=document.getElementById('mapbox');
+const NS="http://www.w3.org/2000/svg";
+const pathEls={};
+const gLand=document.createElementNS(NS,'g'), gLbl=document.createElementNS(NS,'g');
+SHAPES.forEach(s=>{const p=document.createElementNS(NS,'path');p.setAttribute('d',s.d);p.dataset.k=s.k;gLand.appendChild(p);pathEls[s.k]=p});
+svg.append(gLand,gLbl);
+function rowForArea(k){let r=null;S.rows.forEach(x=>{if(x.area===k)r=x});return r}
+function showTip(r,ev){const b=box.getBoundingClientRect();tip.innerHTML=esc(r.label)+'<b>'+fmt(r.value)+'</b>';tip.hidden=false;
+  let x=ev.clientX-b.left+12,y=ev.clientY-b.top+12;if(x+tip.offsetWidth>b.width-4)x=ev.clientX-b.left-tip.offsetWidth-12;tip.style.left=x+'px';tip.style.top=y+'px'}
+function highlight(k,on){pathEls[k]&&pathEls[k].classList.toggle('hl',on);document.querySelectorAll('#m-rank li').forEach(li=>li.classList.toggle('hl',on&&li.dataset.k===k))}
+gLand.addEventListener('pointermove',e=>{const k=e.target.dataset&&e.target.dataset.k;const r=k&&rowForArea(k);if(r){showTip(r,e)}else tip.hidden=true});
+gLand.addEventListener('pointerleave',()=>tip.hidden=true);
+
+function renderMap(){
+  document.getElementById('m-title').textContent=S.title;
+  const sub=document.getElementById('m-sub');sub.textContent=S.sub;sub.hidden=!S.sub;
+  document.getElementById('m-totlabel').textContent=S.totLabel;
+  document.getElementById('m-total').textContent=(S.total===""||S.total==null)?"–":fmt(+S.total);
+  document.getElementById('totalPanel').hidden=(S.total===""||S.total==null);
+  document.getElementById('m-total').style.color=colorAt(+S.total||0);
+  document.getElementById('m-ramp').style.background=rampCSS();
+  document.getElementById('m-low').textContent=S.lowLabel;document.getElementById('m-high').textContent=S.highLabel;
+  Object.values(pathEls).forEach(p=>{p.style.fill='';p.classList.remove('has')});
+  gLbl.innerHTML='';
+  const used={};S.rows.forEach(r=>{if(r.area&&pathEls[r.area])used[r.area]=r});
+  let bb=[Infinity,Infinity,-Infinity,-Infinity];
+  const grow=(x0,y0,x1,y1)=>{bb=[Math.min(bb[0],x0),Math.min(bb[1],y0),Math.max(bb[2],x1),Math.max(bb[3],y1)]};
+  const mk=(tag,attrs)=>{const e=document.createElementNS(NS,tag);for(const a in attrs)e.setAttribute(a,attrs[a]);gLbl.appendChild(e);return e};
+  for(const k in used){const r=used[k],p=pathEls[k];p.style.fill=colorAt(r.value);p.classList.add('has');
+    const s=SHAPES.find(x=>x.k===k);grow(...s.b);
+    const txt=short(r.value);
+    if(s.a<500||CALLOUT[k]){ /* tiny country: label in a pill with a leader line */
+      const off=CALLOUT[k]||[-60,40],x=s.c[0]+off[0],y=s.c[1]+off[1];
+      const label=(r.label.length<=8?r.label:(CODE[k]||k))+' '+txt;
+      mk('line',{class:'lead',x1:s.c[0],y1:s.c[1],x2:x,y2:y});
+      const rc=mk('rect',{class:'pill',y:y-9,height:18,rx:9});
+      const t=mk('text',{class:'pilltxt',x,y:y+4,'text-anchor':'middle','font-size':11});t.textContent=label;
+      let w;try{w=t.getComputedTextLength()+14}catch(e){}if(!w)w=label.length*7+14;
+      rc.setAttribute('x',x-w/2);rc.setAttribute('width',w);
+      grow(x-w/2,y-9,x+w/2,y+9);
+    }else{
+      const t=mk('text',{x:s.c[0],y:s.c[1]+4,'text-anchor':'middle','font-size':s.a<1800?10.5:12,fill:textOn(r.value),stroke:colorAt(r.value)});t.textContent=txt;
+    }}
+  if(bb[0]<Infinity){const pad=18;svg.setAttribute('viewBox',`${bb[0]-pad} ${bb[1]-pad} ${bb[2]-bb[0]+2*pad} ${bb[3]-bb[1]+2*pad}`)}
+  else svg.setAttribute('viewBox','0 0 1000 860');
+  const ol=document.getElementById('m-rank');
+  ol.innerHTML=[...S.rows].sort((a,b)=>b.value-a.value||a.label.localeCompare(b.label)).map(r=>
+    `<li data-k="${esc(r.area)}"><span class="sw${r.area&&pathEls[r.area]?'':' offmap'}" style="--c:${colorAt(r.value)}"></span><span>${esc(r.label)}</span><span class="v">${fmt(r.value)}</span></li>`).join('');
+  document.getElementById('m-offnote').hidden=!S.rows.some(r=>!(r.area&&pathEls[r.area]));
+  ol.querySelectorAll('li').forEach(li=>{li.onmouseenter=()=>highlight(li.dataset.k,true);li.onmouseleave=()=>highlight(li.dataset.k,false)});
+}
+
+/* ---------- EDIT ---------- */
+const $=id=>document.getElementById(id);
+const AREA_OPTS='<option value="">Not on map</option>'+[...SHAPES].sort((a,b)=>a.n.localeCompare(b.n)).map(s=>`<option value="${s.k}">${esc(s.n)}</option>`).join('');
+function renderEditForm(){
+  $('f-title').value=S.title;$('f-sub').value=S.sub;$('f-totlabel').value=S.totLabel;$('f-total').value=S.total;
+  $('c-low').value=S.low;$('c-high').value=S.high;$('f-low').value=S.lowLabel;$('f-high').value=S.highLabel;
+  $('e-ramp').style.background=rampCSS();
+  renderRows();
+}
+function renderRows(){
+  $('rows').innerHTML=S.rows.map((r,i)=>`<tr data-i="${i}">
+    <td class="sw"><i style="background:${colorAt(r.value)}"></i></td>
+    <td><input type="text" id="r-l-${i}" data-f="label" value="${esc(r.label)}" aria-label="Label"></td>
+    <td class="num"><input type="number" id="r-v-${i}" data-f="value" value="${r.value}" step="0.01" min="0" max="100" aria-label="Percentage"></td>
+    <td><select id="r-a-${i}" data-f="area" aria-label="Map area">${AREA_OPTS}</select></td>
+    <td class="x"><button class="icon" data-del="${i}" aria-label="Remove ${esc(r.label)}">✕</button></td></tr>`).join('');
+  S.rows.forEach((r,i)=>$('r-a-'+i).value=r.area||"");
+}
+function bind(id,key,num){$(id).addEventListener('input',e=>{let v=e.target.value;if(num)v=v===""?"":Math.max(0,Math.min(100,+v));S[key]=v;
+  if(key==='low'||key==='high'){$('e-ramp').style.background=rampCSS();refreshSwatches()}save();renderMap()})}
+bind('f-title','title');bind('f-sub','sub');bind('f-totlabel','totLabel');bind('f-total','total',1);
+bind('c-low','low');bind('c-high','high');bind('f-low','lowLabel');bind('f-high','highLabel');
+function refreshSwatches(){document.querySelectorAll('#rows tr').forEach(tr=>{const r=S.rows[tr.dataset.i];tr.querySelector('.sw i').style.background=colorAt(r.value)})}
+$('rows').addEventListener('input',e=>{const f=e.target.dataset.f;if(!f)return;const i=+e.target.closest('tr').dataset.i;let v=e.target.value;
+  if(f==='value'){v=v===""?0:Math.max(0,Math.min(100,+v));}
+  S.rows[i][f]=v;
+  if(f==='label'&&!S.rows[i].area){const g=guessArea(v);if(g){S.rows[i].area=g;$('r-a-'+i).value=g}}
+  refreshSwatches();save();renderMap()});
+$('rows').addEventListener('change',e=>{if(e.target.dataset.f==='area'){S.rows[+e.target.closest('tr').dataset.i].area=e.target.value;save();renderMap()}});
+$('rows').addEventListener('click',e=>{const d=e.target.dataset.del;if(d==null)return;S.rows.splice(+d,1);renderRows();save();renderMap()});
+$('b-add').onclick=()=>{S.rows.push({label:"New country",value:0,area:""});renderRows();save();renderMap();$('r-l-'+(S.rows.length-1)).select()};
+
+function parseCSV(txt){const lines=txt.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);const rows=[];let total=null;
+  lines.forEach((l,idx)=>{const m=l.match(/^"?(.*?)"?\s*[,;\t]\s*"?([-\d.,]+)\s*%?"?$/);if(!m){return}
+    const label=m[1].trim(),value=parseFloat(m[2].replace(',','.'));if(isNaN(value))return;
+    if(/^(grand\s*)?total$/i.test(label))total=value;else rows.push({label,value,area:guessArea(label)})});
+  return{rows,total}}
+$('b-import').onclick=()=>{const{rows,total}=parseCSV($('f-csv').value);
+  if(!rows.length){$('csvMsg').textContent="No rows found. Use one row per country, like: Spain,79.17%";return}
+  S.rows=rows;if(total!=null)S.total=total;save();renderEditForm();renderMap();
+  const off=rows.filter(r=>!r.area).map(r=>r.label);
+  $('csvMsg').textContent=`Loaded ${rows.length} rows.`+(off.length?` Not matched to a map area: ${off.join(', ')}. Pick one in the table if needed.`:'')};
+$('b-copy').onclick=()=>{const csv="Country,Value\n"+S.rows.map(r=>`${r.label},${fmt(r.value)}`).join("\n")+(S.total!==""?`\n${S.totLabel},${fmt(+S.total)}`:"");
+  $('f-csv').value=csv;
+  navigator.clipboard.writeText(csv).then(()=>$('csvMsg').textContent="Copied to clipboard.",()=>{$('f-csv').select();$('csvMsg').textContent="Selected in the box above. Press Ctrl+C / Cmd+C to copy."})};
+$('b-reset').onclick=()=>{$('b-reset2').hidden=false};
+$('b-reset2').onclick=()=>{S=clone(DEFAULTS);$('b-reset2').hidden=true;save();renderEditForm();renderMap();$('csvMsg').textContent="Original data restored."};
+
+/* ---------- ROUTING ---------- */
+function route(){const edit=location.hash==='#edit';$('page-map').hidden=edit;$('page-edit').hidden=!edit;
+  $('tab-map').toggleAttribute('aria-current',!edit);$('tab-edit').toggleAttribute('aria-current',edit);
+  if(edit){$('tab-edit').setAttribute('aria-current','page');renderEditForm()}else{$('tab-map').setAttribute('aria-current','page');renderMap()}}
+window.addEventListener('hashchange',route);
+renderMap();route();
+</script>
